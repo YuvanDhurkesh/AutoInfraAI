@@ -1,0 +1,11 @@
+{
+  "name": "chat",
+  "dependencies": {
+    "express": "^4.19.0",
+    "ws": "^8.18.0",
+    "pg": "^8.13.0"
+  },
+  "scripts": {
+    "start": "node src/server.js"
+  }
+}

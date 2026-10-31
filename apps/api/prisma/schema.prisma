@@ -1,0 +1,290 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountRegime {
+  legacy_12mo
+  free_plan
+  paid_plan
+}
+
+enum DeploymentPattern {
+  F1
+  F2
+  F3
+}
+
+enum FreeTierMode {
+  strict
+  flexible
+}
+
+enum DeploymentStatus {
+  queued
+  analyzing
+  designing
+  generating
+  validating
+  awaiting_approval
+  applying
+  building
+  deploying
+  health_checking
+  live
+  updating
+  destroying
+  destroyed
+  rolled_back
+  failed
+}
+
+enum RevisionAction {
+  initial
+  change
+  rollback
+  redeploy
+}
+
+enum JobKind {
+  analyze
+  design
+  generate
+  apply
+  build
+  deploy
+  destroy
+  change
+}
+
+enum JobStatus {
+  queued
+  running
+  succeeded
+  failed
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions          Session[]
+  githubConnection  GithubConnection?
+  awsConnections    AwsConnection[]
+  deployments       Deployment[]
+  auditEvents       AuditEvent[]
+  freeTierModeDefault FreeTierMode @default(strict)
+
+  @@map("users")
+}
+
+/// Signed-cookie session store. Not in the original brief's data model (Sec. 7) --
+/// added because httpOnly cookie sessions need a server-side session record.
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model GithubConnection {
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  githubUserId       String
+  githubLogin        String
+  accessTokenEncrypted String
+  scopes             String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@map("github_connections")
+}
+
+model AwsConnection {
+  id            String        @id @default(uuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Null until the user pastes the ARN of the role they created from our
+  /// CloudFormation template (Sec. 3.1) -- the connection starts "pending".
+  roleArn       String?
+  externalId    String
+  region        String
+  accountRegime AccountRegime?
+  planStateJson Json?
+  verifiedAt    DateTime?
+  /// Permission-set version the role's stack reported (null = before versioning).
+  templateVersion Int?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  deployments      Deployment[]
+  freeTierLedger   FreeTierLedgerEntry[]
+
+  @@index([userId])
+  @@map("aws_connections")
+}
+
+model Deployment {
+  id                String             @id @default(uuid())
+  ownerId           String
+  owner             User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  awsConnectionId   String
+  awsConnection     AwsConnection      @relation(fields: [awsConnectionId], references: [id])
+  repoUrl           String
+  branch            String
+  subdir            String?
+  pattern           DeploymentPattern?
+  freeTierMode      FreeTierMode       @default(strict)
+  /// Sec. 2.2 "F2+RDS (user opt-in)".
+  allowRds          Boolean            @default(false)
+  /// The app's database is hosted outside AWS (Atlas, Neon...); the user enters its connection settings.
+  externalDatabase  Boolean            @default(false)
+  /// Human-readable reason when status = failed.
+  failureReason     String?
+  status            DeploymentStatus   @default(queued)
+  currentRevisionId String?
+  liveUrl           String?
+  region            String
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  revisions     Revision[] @relation("DeploymentRevisions")
+  envVars       EnvVar[]
+  jobs          Job[]
+  ledgerEntries FreeTierLedgerEntry[]
+
+  @@index([ownerId])
+  @@map("deployments")
+}
+
+model Revision {
+  id               String         @id @default(uuid())
+  deploymentId     String
+  deployment       Deployment     @relation("DeploymentRevisions", fields: [deploymentId], references: [id], onDelete: Cascade)
+  number           Int
+  commitSha        String
+  repoProfile      Json?
+  architecturePlan Json?
+  freeTierReport   Json?
+  terraformBundle  Json?
+  planSummary      Json?
+  /// Non-sensitive `terraform output` values after a successful apply.
+  outputs          Json?
+  changePrompt     String?
+  /// For a rollback: the number of the revision it restores.
+  rollbackOf       Int?
+  /// Set when the owner discards a pending revision before anything from it was applied.
+  discardedAt      DateTime?
+  status           DeploymentStatus
+  action           RevisionAction
+  createdAt        DateTime       @default(now())
+
+  jobs Job[]
+
+  @@unique([deploymentId, number])
+  @@index([deploymentId])
+  @@map("revisions")
+}
+
+model Job {
+  id           String     @id @default(uuid())
+  deploymentId String
+  deployment   Deployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+  revisionId   String?
+  revision     Revision?  @relation(fields: [revisionId], references: [id])
+  kind         JobKind
+  status       JobStatus  @default(queued)
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  error        String?
+  /// Gemini's explanation of a failure, generated on request and cached.
+  diagnosis    Json?
+  createdAt    DateTime   @default(now())
+
+  logs JobLog[]
+
+  @@index([deploymentId])
+  @@map("jobs")
+}
+
+model JobLog {
+  id        String   @id @default(uuid())
+  /// Strict ordering for log polling (timestamps can collide within a millisecond).
+  seq       Int      @unique @default(autoincrement())
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  line      String
+  stream    String   @default("stdout")
+  createdAt DateTime @default(now())
+
+  @@index([jobId])
+  @@map("job_logs")
+}
+
+model EnvVar {
+  id           String     @id @default(uuid())
+  deploymentId String
+  deployment   Deployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+  name         String
+  isSecret     Boolean    @default(false)
+  ssmPath      String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([deploymentId, name])
+  @@map("env_vars")
+}
+
+model FreeTierLedgerEntry {
+  id              String        @id @default(uuid())
+  awsConnectionId String
+  awsConnection   AwsConnection @relation(fields: [awsConnectionId], references: [id], onDelete: Cascade)
+  deploymentId    String?
+  deployment      Deployment?   @relation(fields: [deploymentId], references: [id])
+  resourceKind    String
+  amount          Float
+  createdAt       DateTime      @default(now())
+
+  @@index([awsConnectionId])
+  @@map("free_tier_ledger")
+}
+
+model LlmCall {
+  id            String   @id @default(uuid())
+  purpose       String
+  model         String
+  promptTokens  Int?
+  outputTokens  Int?
+  latencyMs     Int?
+  success       Boolean
+  error         String?
+  createdAt     DateTime @default(now())
+
+  @@map("llm_calls")
+}
+
+model AuditEvent {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  targetType String
+  targetId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@map("audit_events")
+}

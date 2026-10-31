@@ -1,0 +1,14 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+  build:
+    commands:
+      # Static site: nothing to build, publish the repo contents as-is.
+      - mkdir -p /tmp/site && cp -r . /tmp/site && rm -rf /tmp/site/.git
+  post_build:
+    commands:
+      - aws s3 sync /tmp/site "s3://$FRONTEND_BUCKET" --delete
+      - aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*"

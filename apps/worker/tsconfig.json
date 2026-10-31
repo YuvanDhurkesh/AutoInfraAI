@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "references": [
+    {
+      "path": "../../packages/shared"
+    },
+    {
+      "path": "../../packages/pipeline"
+    },
+    {
+      "path": "../../packages/llm"
+    },
+    {
+      "path": "../../packages/scanner"
+    },
+    {
+      "path": "../../packages/aws"
+    },
+    {
+      "path": "../../packages/terraform-runner"
+    }
+  ]
+}

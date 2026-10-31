@@ -1,0 +1,42 @@
+{
+  "name": "@autoinfra/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsx watch --env-file=../../.env src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -b",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "node --env-file=../../.env node_modules/prisma/build/index.js migrate dev",
+    "db:deploy": "node --env-file=../../.env node_modules/prisma/build/index.js migrate deploy"
+  },
+  "dependencies": {
+    "@autoinfra/shared": "workspace:*",
+    "@autoinfra/aws": "workspace:*",
+    "@autoinfra/terraform-reference": "workspace:*",
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^10.0.2",
+    "@prisma/client": "^6.1.0",
+    "argon2": "^0.41.1",
+    "fastify": "^5.2.0",
+    "zod": "^3.24.1",
+    "@autoinfra/llm": "workspace:*",
+    "@autoinfra/scanner": "workspace:*",
+    "@autoinfra/free-tier-policy": "workspace:*",
+    "@autoinfra/pipeline": "workspace:*",
+    "bullmq": "^5.34.0",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "prisma": "^6.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "@autoinfra/terraform-runner": "workspace:*"
+  }
+}

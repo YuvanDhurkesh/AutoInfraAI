@@ -1,0 +1,10 @@
+{
+  "name": "careers-api",
+  "dependencies": {
+    "express": "^4.19.0",
+    "mongoose": "^8.5.0"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}

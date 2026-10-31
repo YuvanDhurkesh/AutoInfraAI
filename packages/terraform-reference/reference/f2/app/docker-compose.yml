@@ -1,0 +1,40 @@
+# Example: Node API + Postgres on one Free-Tier instance (1 GB RAM).
+services:
+  caddy:
+    image: public.ecr.aws/docker/library/caddy:2.9-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    environment:
+      ORIGIN_SECRET: ${ORIGIN_SECRET}
+      APP_PORT: "4000"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    mem_limit: 64m
+    depends_on:
+      - app
+
+  app:
+    image: ${APP_IMAGE}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "4000"
+      DATABASE_URL: postgresql://app:${AUTOINFRA_DB_PASSWORD}@db:5432/app
+    mem_limit: 384m
+    depends_on:
+      - db
+
+  db:
+    image: public.ecr.aws/docker/library/postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${AUTOINFRA_DB_PASSWORD}
+      POSTGRES_DB: app
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    mem_limit: 256m
+
+volumes:
+  dbdata:

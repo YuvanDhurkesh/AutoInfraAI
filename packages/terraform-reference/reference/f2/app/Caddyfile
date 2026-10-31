@@ -1,0 +1,8 @@
+:80 {
+	# Only CloudFront knows the origin secret; everything else is refused.
+	@cloudfront header X-AutoInfra-Origin-Secret {$ORIGIN_SECRET}
+	handle @cloudfront {
+		reverse_proxy app:{$APP_PORT}
+	}
+	respond 403
+}

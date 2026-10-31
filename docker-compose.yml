@@ -1,0 +1,91 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: autoinfra
+      POSTGRES_PASSWORD: autoinfra
+      POSTGRES_DB: autoinfra
+    ports:
+      # Host port 5433 avoids colliding with a locally installed Postgres
+      # service on the default 5432 (common on Windows dev machines).
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autoinfra"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      # Host port 6380 avoids colliding with anything already bound to 6379.
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://autoinfra:autoinfra@postgres:5432/autoinfra
+      REDIS_URL: redis://redis:6379
+      WEB_ORIGIN: http://localhost:3000
+    volumes:
+      # The platform's own AWS identity: "Connect AWS" reads its account id
+      # (the role's trust policy), signs the template link and verifies roles.
+      - ${USERPROFILE:-${HOME}}/.aws:/root/.aws:ro
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://autoinfra:autoinfra@postgres:5432/autoinfra
+      REDIS_URL: redis://redis:6379
+      TF_PLUGIN_CACHE_DIR: /tf-plugin-cache
+    volumes:
+      - tf-plugin-cache:/tf-plugin-cache
+      # The platform's own AWS identity, used only to call sts:AssumeRole into
+      # users' accounts. Terraform never sees it: child processes get only the
+      # assumed-role credentials.
+      - ${USERPROFILE:-${HOME}}/.aws:/root/.aws:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  postgres-data:
+  tf-plugin-cache:

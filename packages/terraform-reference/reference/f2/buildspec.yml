@@ -1,0 +1,34 @@
+version: 0.2
+
+# Example: Vite React frontend in ./frontend, Node API (with Dockerfile) in ./backend.
+# Files AutoInfra generated (app/*) are in ./.autoinfra/ of the source zip.
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+  pre_build:
+    commands:
+      - aws ecr get-login-password | docker login --username AWS --password-stdin "${ECR_REPOSITORY_URL%%/*}"
+      # Unique per build: the ECR repository uses immutable tags.
+      - IMAGE_TAG="build-$CODEBUILD_BUILD_NUMBER"
+  build:
+    commands:
+      - cd frontend && npm ci && VITE_API_URL="$API_PATH_PREFIX" npm run build && cd ..
+      - docker build -t "$ECR_REPOSITORY_URL:$IMAGE_TAG" -f backend/Dockerfile backend
+      - docker push "$ECR_REPOSITORY_URL:$IMAGE_TAG"
+      # Compose file + Caddyfile + pinned image tag for the instance.
+      - echo "APP_IMAGE=$ECR_REPOSITORY_URL:$IMAGE_TAG" > /tmp/image.env
+      - aws s3 cp .autoinfra/docker-compose.yml "s3://$ARTIFACTS_BUCKET/deploy/docker-compose.yml"
+      - aws s3 cp .autoinfra/Caddyfile "s3://$ARTIFACTS_BUCKET/deploy/Caddyfile"
+      - aws s3 cp /tmp/image.env "s3://$ARTIFACTS_BUCKET/deploy/image.env"
+  post_build:
+    commands:
+      # A new instance needs a minute or two to register with SSM.
+      - for i in $(seq 1 60); do [ "$(aws ssm describe-instance-information --filters Key=InstanceIds,Values=$INSTANCE_ID --query "length(InstanceInformationList)" --output text)" = "1" ] && break; sleep 10; done
+      - aws s3 sync frontend/dist "s3://$FRONTEND_BUCKET" --delete
+      - >-
+        CMD_ID=$(aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript
+        --parameters 'commands=["/opt/autoinfra/deploy.sh"]'
+        --query Command.CommandId --output text)
+      - aws ssm wait command-executed --command-id "$CMD_ID" --instance-id "$INSTANCE_ID"
+      - aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*"

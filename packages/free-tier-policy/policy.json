@@ -1,0 +1,137 @@
+{
+  "lastVerified": "2026-10-16",
+  "sourceUrls": [
+    "https://aws.amazon.com/free/free-tier-faqs/",
+    "https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/free-tier.html",
+    "https://aws.amazon.com/free/terms",
+    "https://aws.amazon.com/about-aws/whats-new/2025/07/aws-free-tier-credits-month-free-plan/",
+    "https://aws.amazon.com/free"
+  ],
+  "notes": "Verified via live web search against AWS's own pages (not solely from training data) on lastVerified. Numbers below are what AWS documents; this file should be re-verified periodically since AWS can change Free Tier terms at any time -- do not treat lastVerified as a guarantee the numbers below still hold. Where sources disagreed (DynamoDB request-unit framing, CodeBuild minutes), this file keeps only the figure AWS's own pages state and marks the rest informational.",
+  "regimes": {
+    "legacy_12mo": {
+      "label": "Legacy 12-month Free Tier (accounts created before 2025-07-15)",
+      "durationMonths": 12,
+      "ec2": {
+        "hoursPerMonth": 750,
+        "note": "t2.micro or t3.micro depending on region; the actual eligible type list is looked up live via ec2:DescribeInstanceTypes, never hardcoded here."
+      },
+      "rds": {
+        "hoursPerMonth": 750,
+        "storageGb": 20,
+        "multiAz": false,
+        "engine": "single instance only"
+      },
+      "s3": { "storageGb": 5, "getRequestsPerMonth": 20000, "putRequestsPerMonth": 2000 },
+      "ebsGb": 30,
+      "publicIpv4HoursPerMonth": 750
+    },
+    "free_plan": {
+      "label": "New-model Free plan (credit-based, accounts created on/after 2025-07-15)",
+      "creditUsd": 200,
+      "durationMonths": 6,
+      "autoClosesIfNotUpgraded": true,
+      "ec2RdsDrawFromCredit": true,
+      "note": "EC2/RDS/API Gateway usage draws from the credit balance rather than a separate free monthly allowance. AutoInfra still avoids these by default since 'Free Tier eligible' does not mean $0 on this plan."
+    },
+    "paid_plan": {
+      "label": "New-model Paid plan (upgraded, or never eligible for Free)",
+      "ec2RdsDrawFromCredit": false,
+      "note": "Standard billing beyond the Always Free service limits below."
+    }
+  },
+  "alwaysFree": {
+    "lambda": { "requestsPerMonth": 1000000, "gbSeconds": 400000 },
+    "dynamodb": { "storageGb": 25, "readCapacityUnits": 25, "writeCapacityUnits": 25 },
+    "cloudfront": { "dataTransferOutGb": 1024, "requestsPerMonth": 10000000 },
+    "ssmParameterStore": { "standardParametersFree": true },
+    "codeBuild": {
+      "note": "AWS documents free build minutes for small Linux compute types; exact current minutes are not enforced numerically by this evaluator -- use the smallest compute type and treat CodeBuild cost as a warning, not a hard limit, until re-verified."
+    }
+  },
+  "lambdaPackageSizeLimitMb": 250,
+  "cloudFrontOriginResponseTimeoutSeconds": 30,
+  "limits": {
+    "ebsMaxTotalGb": 30,
+    "rdsMaxStorageGb": 20,
+    "logRetentionDaysRequired": 7,
+    "maxAlwaysOnEc2PerAwsAccount": 1,
+    "maxPublicIpv4PerDeployment": 1,
+    "ecrMaxImagesPerRepo": 2
+  },
+  "denyList": [
+    {
+      "code": "nat_gateway",
+      "resourceTypes": ["aws_nat_gateway"],
+      "reason": "NAT Gateway is never Free-Tier-eligible and bills per-hour plus per-GB."
+    },
+    {
+      "code": "ecs_fargate",
+      "resourceTypes": ["aws_ecs_service", "aws_ecs_task_definition"],
+      "attributeDeny": { "launch_type": "FARGATE" },
+      "reason": "ECS Fargate is not Free-Tier-eligible."
+    },
+    {
+      "code": "load_balancer",
+      "resourceTypes": ["aws_lb", "aws_alb", "aws_elb"],
+      "reason": "ALB/NLB free usage exists only on legacy accounts for 12 months and is not enabled by default; CloudFront handles routing instead."
+    },
+    {
+      "code": "api_gateway",
+      "resourceTypes": ["aws_api_gateway_rest_api", "aws_apigatewayv2_api"],
+      "reason": "API Gateway draws from credits on new-model accounts; Lambda Function URLs are used instead."
+    },
+    {
+      "code": "rds_multi_az",
+      "resourceTypes": ["aws_db_instance"],
+      "attributeDeny": { "multi_az": true },
+      "reason": "Multi-AZ RDS is not Free-Tier-eligible."
+    },
+    {
+      "code": "aurora",
+      "resourceTypes": ["aws_rds_cluster", "aws_rds_cluster_instance"],
+      "reason": "Aurora is not Free-Tier-eligible."
+    },
+    {
+      "code": "elasticache",
+      "resourceTypes": ["aws_elasticache_cluster", "aws_elasticache_replication_group"],
+      "reason": "ElastiCache is not allowed by default; requires explicit opt-in and eligibility confirmation."
+    },
+    {
+      "code": "opensearch",
+      "resourceTypes": ["aws_opensearch_domain", "aws_elasticsearch_domain"],
+      "reason": "OpenSearch is not allowed by default; requires explicit opt-in and eligibility confirmation."
+    },
+    {
+      "code": "eks",
+      "resourceTypes": ["aws_eks_cluster"],
+      "reason": "EKS is never Free-Tier-eligible (control plane bills hourly)."
+    },
+    {
+      "code": "route53_zone",
+      "resourceTypes": ["aws_route53_zone"],
+      "reason": "Route 53 hosted zones are not Always Free; use an external DNS provider with a CNAME to CloudFront instead."
+    },
+    {
+      "code": "waf",
+      "resourceTypes": ["aws_wafv2_web_acl", "aws_waf_web_acl"],
+      "reason": "WAF is not Free-Tier-eligible."
+    },
+    {
+      "code": "customer_kms_key",
+      "resourceTypes": ["aws_kms_key"],
+      "reason": "Customer-managed KMS keys bill monthly; use AWS-managed keys instead."
+    },
+    {
+      "code": "secrets_manager",
+      "resourceTypes": ["aws_secretsmanager_secret"],
+      "reason": "Secrets Manager is not Always Free; use SSM Parameter Store SecureString instead."
+    },
+    {
+      "code": "unattached_eip",
+      "resourceTypes": ["aws_eip"],
+      "attributeDeny": { "instance": null, "network_interface": null },
+      "reason": "An unattached Elastic IP bills hourly with no offsetting free allowance."
+    }
+  ]
+}

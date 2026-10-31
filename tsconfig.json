@@ -1,0 +1,38 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "packages/shared"
+    },
+    {
+      "path": "packages/scanner"
+    },
+    {
+      "path": "packages/llm"
+    },
+    {
+      "path": "packages/aws"
+    },
+    {
+      "path": "packages/terraform-policy"
+    },
+    {
+      "path": "packages/free-tier-policy"
+    },
+    {
+      "path": "packages/terraform-reference"
+    },
+    {
+      "path": "apps/api"
+    },
+    {
+      "path": "apps/worker"
+    },
+    {
+      "path": "packages/terraform-runner"
+    },
+    {
+      "path": "packages/pipeline"
+    }
+  ]
+}

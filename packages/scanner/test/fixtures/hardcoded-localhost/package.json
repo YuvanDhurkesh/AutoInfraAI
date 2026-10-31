@@ -1,0 +1,12 @@
+{
+  "name": "spa",
+  "dependencies": {
+    "react": "^18.3.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  },
+  "scripts": {
+    "build": "vite build"
+  }
+}

@@ -1,0 +1,52 @@
+:80 {
+	# Only CloudFront knows the origin secret; everything else is refused.
+	# Viewers always reach CloudFront over HTTPS (it redirects plain HTTP), so
+	# the app is told https: secure cookies, absolute URLs and SSL redirects
+	# (Express trust proxy, Django SECURE_PROXY_SSL_HEADER) depend on it.
+	@cloudfront header X-AutoInfra-Origin-Secret {$ORIGIN_SECRET}
+	handle @cloudfront {
+{{#if SSR_FRONTEND}}
+{{#if HAS_BACKEND}}
+		@api path {{API_PREFIX}} {{API_PREFIX}}/*
+		handle @api {
+{{#if STRIP_IN_CADDY}}
+			uri strip_prefix {{API_PREFIX}}
+{{/if}}
+			reverse_proxy app:{$APP_PORT} {
+				header_up X-Forwarded-Proto https
+			}
+		}
+{{/if}}
+{{#if CADDY_BACKEND_PATHS}}
+		# The backend's paths outside the API prefix, unchanged.
+		@backend path {{BACKEND_PATHS_CADDY}}
+		handle @backend {
+			reverse_proxy app:{$APP_PORT} {
+				header_up X-Forwarded-Proto https
+			}
+		}
+{{/if}}
+		handle {
+			reverse_proxy web:3000 {
+				header_up X-Forwarded-Proto https
+			}
+		}
+{{else}}
+{{#if STRIP_IN_CADDY}}
+		@api path {{API_PREFIX}} {{API_PREFIX}}/*
+		handle @api {
+			uri strip_prefix {{API_PREFIX}}
+			reverse_proxy app:{$APP_PORT} {
+				header_up X-Forwarded-Proto https
+			}
+		}
+{{/if}}
+		handle {
+			reverse_proxy app:{$APP_PORT} {
+				header_up X-Forwarded-Proto https
+			}
+		}
+{{/if}}
+	}
+	respond 403
+}

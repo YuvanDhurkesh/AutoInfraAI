@@ -1,0 +1,21 @@
+version: 0.2
+
+# Example: Vite React frontend in ./frontend, Express backend in ./backend.
+# Files AutoInfra generated (app/*) are in ./.autoinfra/ of the source zip.
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+  build:
+    commands:
+      # The frontend gets the API as a same-origin relative path, never localhost.
+      - cd frontend && npm ci && VITE_API_URL="$API_PATH_PREFIX" npm run build && cd ..
+      # Backend: production deps plus the Web Adapter entrypoint. (buildspec
+      # 0.2 keeps the working directory between commands, so cd back out.)
+      - cd backend && npm ci --omit=dev && cp ../.autoinfra/run.sh ../.autoinfra/autoinfra-env.mjs . && chmod +x run.sh && zip -qr /tmp/api.zip . && cd ..
+  post_build:
+    commands:
+      - aws s3 sync frontend/dist "s3://$FRONTEND_BUCKET" --delete
+      - aws lambda update-function-code --function-name "$FUNCTION_NAME" --zip-file fileb:///tmp/api.zip
+      - aws lambda wait function-updated --function-name "$FUNCTION_NAME"
+      - aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*"

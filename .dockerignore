@@ -1,0 +1,13 @@
+# Never baked into an image: secrets (compose passes .env at runtime via
+# env_file) and this machine's own installs and builds (the images install
+# and build for Linux themselves).
+.env
+.env.*
+!.env.example
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/*.tsbuildinfo
+**/.terraform
+.git

@@ -1,0 +1,9 @@
+{
+  "name": "leaky",
+  "dependencies": {
+    "express": "^4.19.0"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  }
+}

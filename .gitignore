@@ -1,0 +1,46 @@
+# Secrets
+.env
+.env.*
+!.env.example
+# Deliberately-fake secret used by the scanner's secret-detection test
+!packages/scanner/test/fixtures/repo-with-secrets/.env
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Terraform (generated per-deployment, not committed to this repo)
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+coverage/
+playwright-report/
+test-results/
+
+# Prisma
+*.db
+*.db-journal
+
+# Turborepo
+.turbo/

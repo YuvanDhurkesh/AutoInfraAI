@@ -1,0 +1,10 @@
+# Files that end up executed on Linux (CodeBuild, Lambda, EC2) or parsed by
+# Terraform must keep LF endings even on Windows checkouts -- a CRLF run.sh
+# fails with "$'\r': command not found".
+*.sh        text eol=lf
+*.tf        text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+Caddyfile   text eol=lf
+Dockerfile  text eol=lf
+Dockerfile.*  text eol=lf

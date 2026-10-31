@@ -1,0 +1,2 @@
+# Blueprint templates: {{#if ...}} blocks make them invalid YAML until rendered.
+packages/terraform-reference/blueprints/

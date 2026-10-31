@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: autoinfra
+          POSTGRES_PASSWORD: autoinfra
+          POSTGRES_DB: autoinfra
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U autoinfra"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://autoinfra:autoinfra@localhost:5432/autoinfra
+      REDIS_URL: redis://localhost:6379
+      WEB_ORIGIN: http://localhost:3000
+      COOKIE_SECRET: ci-cookie-secret-0123456789abcdef0123456789abcdef
+      ENCRYPTION_KEY: ci-encryption-key-0123456789abcdef0123456789abcdef
+      AWS_REGION: us-east-1
+      NODE_ENV: test
+      TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugin-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # The validation gauntlet tests run real terraform (tflint/trivy run via
+      # Docker, which the runner provides). Same version as the worker image.
+      # terraform_wrapper must be off: it rewrites stdout and breaks -json parsing.
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
+      - name: Terraform plugin cache
+        run: mkdir -p "$TF_PLUGIN_CACHE_DIR"
+
+      # Node's bundled Corepack can't start pnpm 12 (it looks for
+      # bin/pnpm.cjs); install the version package.json pins with npm.
+      - name: Install pnpm
+        run: |
+          npm install -g "pnpm@$(node -p "require('./package.json').packageManager.split('@')[1]")"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm -w typecheck
+
+      - name: Lint
+        run: pnpm -w lint
+
+      - name: Prisma migrate
+        run: pnpm --filter @autoinfra/api exec prisma migrate deploy
+
+      - name: Test
+        run: pnpm -w test

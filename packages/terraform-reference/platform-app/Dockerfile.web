@@ -1,0 +1,85 @@
+# Platform-owned: runs a frontend that needs its server (Next.js with SSR,
+# middleware or dynamic routes; Nuxt; SvelteKit) as the "web" container on
+# F2. Build context is the frontend folder:
+#   docker build -f .autoinfra/Dockerfile.web \
+#     --build-arg AUTOINFRA_WEB_FRAMEWORK=next \
+#     --build-arg AUTOINFRA_BUILD_ENV="NEXT_PUBLIC_API_URL=/api" <frontend dir>
+# Base images come from AWS's mirror of Docker Official Images: Docker Hub
+# refuses CodeBuild's shared addresses with 429 Too Many Requests.
+FROM public.ecr.aws/docker/library/node:22-slim AS build
+WORKDIR /web
+ARG AUTOINFRA_WEB_FRAMEWORK=next
+ENV NEXT_TELEMETRY_DISABLED=1 NUXT_TELEMETRY_DISABLED=1 \
+  COREPACK_ENABLE_DOWNLOAD_PROMPT=0 YARN_NODE_LINKER=node-modules YARN_ENABLE_GLOBAL_CACHE=false
+COPY . .
+# The repo's own package manager and lockfile (Corepack honours a
+# "packageManager" field); Yarn 2+ installs into node_modules, not PnP.
+# When Corepack can't start the pinned pnpm (Node's bundled Corepack can't
+# run pnpm 12), npm's pnpm installs, switching to the pinned version itself.
+RUN corepack enable \
+  && if [ -f pnpm-lock.yaml ]; then echo pnpm > /tmp/pm \
+    && (pnpm --version > /dev/null 2>&1 || (corepack disable pnpm; npm install -g pnpm)) \
+    && pnpm install --frozen-lockfile; \
+  elif [ -f yarn.lock ]; then echo yarn > /tmp/pm \
+    && if yarn --version | grep -q '^1\.'; then yarn install --frozen-lockfile; else yarn install --immutable; fi; \
+  elif [ -f package-lock.json ]; then echo npm > /tmp/pm && npm ci; \
+  else echo npm > /tmp/pm && npm install; fi
+# SvelteKit writes its server with an adapter; adapter-auto (and the hosting
+# providers' adapters) produce nothing a container can run, so the build's
+# copy uses adapter-node. The repo is never changed.
+RUN if [ "$AUTOINFRA_WEB_FRAMEWORK" = sveltekit ]; then \
+    for f in svelte.config.js svelte.config.mjs svelte.config.ts; do \
+      if [ -f "$f" ]; then sed -i -E 's#@sveltejs/adapter-(auto|vercel|netlify|cloudflare(-workers)?)#@sveltejs/adapter-node#g' "$f"; fi; \
+    done; \
+    if [ ! -d node_modules/@sveltejs/adapter-node ]; then \
+      kit=$(node -p "JSON.parse(require('fs').readFileSync('node_modules/@sveltejs/kit/package.json','utf8')).version.split('.')[0]"); \
+      case "$kit" in 1) adapter=1 ;; 2) adapter=5 ;; *) adapter=latest ;; esac; \
+      case "$(cat /tmp/pm)" in \
+        pnpm) pnpm add -D "@sveltejs/adapter-node@$adapter" ;; \
+        yarn) yarn add -D "@sveltejs/adapter-node@$adapter" ;; \
+        *) npm install -D "@sveltejs/adapter-node@$adapter" ;; \
+      esac; \
+    fi; \
+  fi
+# Public build-time values (the API path, VITE_*/NEXT_PUBLIC_*/PUBLIC_* the
+# owner entered -- never secrets) arrive as NAME=value lines. They're both
+# exported and written to .env.production.local, which Next.js and Vite read.
+ARG AUTOINFRA_BUILD_ENV=""
+RUN printf '%s\n' "$AUTOINFRA_BUILD_ENV" > .env.production.local \
+  && while IFS= read -r kv; do case "$kv" in [A-Za-z_]*=*) export "$kv" ;; esac; done < .env.production.local \
+  && "$(cat /tmp/pm)" run build \
+  && rm -f .env.production.local
+# Keep only what the server needs at runtime: ECR's free storage is 500 MB.
+# Nuxt's .output is self-contained; the SWC compiler binaries (~225 MB) are
+# only needed to build Next.js -- and to load a next.config.ts -- not to start it.
+RUN set -e; pm="$(cat /tmp/pm)"; \
+  case "$AUTOINFRA_WEB_FRAMEWORK" in \
+    nuxt) \
+      test -f .output/server/index.mjs || { echo "nuxt build produced no .output/server/index.mjs (is the Nitro preset node-server?)" >&2; exit 1; }; \
+      rm -rf node_modules ;; \
+    sveltekit) \
+      test -f build/index.js || { echo "SvelteKit build produced no build/index.js (adapter-node output)" >&2; exit 1; } ;; \
+    *) \
+      test -d .next || { echo "next build produced no .next folder" >&2; exit 1; }; \
+      rm -rf .next/cache ;; \
+  esac; \
+  if [ -d node_modules ]; then \
+    case "$pm" in \
+      pnpm) pnpm prune --prod ;; \
+      yarn) if yarn --version | grep -q '^1\.'; then yarn install --production --ignore-scripts --frozen-lockfile || yarn install --production --ignore-scripts; fi ;; \
+      *) npm prune --omit=dev ;; \
+    esac; \
+  fi; \
+  rm -rf .yarn/cache; \
+  if [ "$AUTOINFRA_WEB_FRAMEWORK" = next ] && [ ! -f next.config.ts ]; then rm -rf node_modules/@next/swc-*; fi
+
+FROM public.ecr.aws/docker/library/node:22-slim
+WORKDIR /web
+ARG AUTOINFRA_WEB_FRAMEWORK=next
+# HOST/PORT: Nuxt (Nitro) and SvelteKit; HOSTNAME/PORT: Next.js.
+ENV NODE_ENV=production PORT=3000 HOST=0.0.0.0 HOSTNAME=0.0.0.0 NEXT_TELEMETRY_DISABLED=1 \
+  AUTOINFRA_WEB_FRAMEWORK=${AUTOINFRA_WEB_FRAMEWORK}
+COPY --from=build --chown=node:node /web ./
+USER node
+EXPOSE 3000
+CMD ["sh", "-c", "case \"$AUTOINFRA_WEB_FRAMEWORK\" in nuxt) exec node .output/server/index.mjs ;; sveltekit) exec node build ;; *) exec node node_modules/next/dist/bin/next start -p 3000 -H 0.0.0.0 ;; esac"]

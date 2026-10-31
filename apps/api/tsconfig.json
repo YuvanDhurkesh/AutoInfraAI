@@ -1,0 +1,32 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "references": [
+    {
+      "path": "../../packages/shared"
+    },
+    {
+      "path": "../../packages/aws"
+    },
+    {
+      "path": "../../packages/terraform-reference"
+    },
+    {
+      "path": "../../packages/llm"
+    },
+    {
+      "path": "../../packages/scanner"
+    },
+    {
+      "path": "../../packages/free-tier-policy"
+    },
+    {
+      "path": "../../packages/pipeline"
+    }
+  ]
+}

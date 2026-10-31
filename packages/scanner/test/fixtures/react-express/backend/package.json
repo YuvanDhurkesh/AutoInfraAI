@@ -1,0 +1,10 @@
+{
+  "name": "backend",
+  "dependencies": {
+    "express": "^4.19.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "build": "echo no-build-step"
+  }
+}
